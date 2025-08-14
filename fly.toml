@@ -1,0 +1,21 @@
+app = "ebites-bot"
+
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TELEGRAM_BOT_TOKEN = "8386261316:AAF6DKaWDTaBM8LrPy9V1QPU52GjHYktv98"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
