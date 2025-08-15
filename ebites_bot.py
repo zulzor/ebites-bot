@@ -184,7 +184,7 @@ async def handle_age_choice(callback: types.CallbackQuery, state: FSMContext):
     age_min = int(data[1])
     age_max = int(data[2])
     age_display = f"{age_min}–{age_max}"
-    await state.update_data(age=age_max)  # Сохраняем максимальный как основной
+    await state.update_data(age=age_max)
     await callback.message.edit_text(f"✅ Возраст: {age_display}")
     await callback.message.answer("⚧ Выберите пол:", reply_markup=gender_inline_kb)
     await state.set_state(ProfileStates.waiting_for_gender)
@@ -213,7 +213,10 @@ async def edit_city(message: types.Message):
 async def handle_city_choice(callback: types.CallbackQuery, state: FSMContext):
     city = callback.data.split("_", 1)[1]
     if city == "other":
-        await callback.message.answer("Введите город вручную:", reply_markup=get_back_button())
+        await callback.message.answer(
+            "Введите город вручную:",
+            reply_markup=get_back_button()
+        )
         await state.set_state(ProfileStates.waiting_for_city_manual)
         await callback.answer()
         return
@@ -239,6 +242,7 @@ async def enter_city_manual(message: types.Message, state: FSMContext):
     if not message.text.replace(" ", "").isalpha() or len(message.text) > 30:
         await message.answer("Введите корректное название города:")
         return
+
     data = await state.get_data()
     user_id = message.from_user.id
     name = data.get("name", get_user(user_id)["profile"]["name"])
@@ -340,7 +344,10 @@ async def start_search(message: types.Message):
     if user["status"] == "searching":
         await message.answer("Вы уже ищете!", reply_markup=get_searching_menu())
         return
-    if not all([user["profile"]["name"], user["profile"]["age"], user["profile"]["gender"], user["profile"]["city"]]):
+    if not all([user["profile"]["name"],
+                user["profile"]["age"],
+                user["profile"]["gender"],
+                user["profile"]["city"]]):
         await message.answer("❌ Заполните профиль!")
         return
 
@@ -350,46 +357,9 @@ async def start_search(message: types.Message):
 
 async def find_partner_with_timeout(user_id: int):
     try:
-        # --- Этап 1: Основной поиск (15 секунд) ---
-        for _ in range(3):  # 3 попытки × 5 сек = 15 сек
+        # 1-й этап: строгие фильтры (15 сек)
+        for _ in range(3):
             await asyncio.sleep(5)
-            if get_user(user_id)["status"] != "searching":  # Пользователь мог выйти
-                return
-            candidates = find_compatible(user_id)
-            for cand in candidates:
-                companion_id = cand["user_id"]
-                if get_user(companion_id)["status"] == "searching":
-                    create_chat(user_id, companion_id)
-                    set_status(user_id, "chatting")
-                    set_status(companion_id, "chatting")
-                    await bot.send_message(user_id, "🎉 Нашли! Пишите:", reply_markup=get_in_chat_menu())
-                    await bot.send_message(companion_id, "🎉 Нашли! Ждём:", reply_markup=get_in_chat_menu())
-                    return
-
-        # --- Этап 2: Проверяем, всё ещё ищем? ---
-        if get_user(user_id)["status"] != "searching":
-            return
-
-        # --- Этап 3: Расширяем фильтры ---
-        user = get_user(user_id)
-        new_max_age = min(user["preferences"]["age_max"] + 10, 99)
-        new_gender = "any"
-        new_city = "any"
-
-        update_filters(user_id, preferred_gender=new_gender, max_age=new_max_age, city=new_city)
-        set_status(user_id, "searching")  # Перестраховка
-
-        await bot.send_message(
-    user_id,
-    f"🔍 Нет совпадений. Расширяем поиск:\n"
-    f"• Пол: любой\n"
-    f"• Возраст: до {new_max_age}\n"
-    f"• Город: любой\n"
-    f"Продолжаем искать…"
-)
-
-        # --- Этап 4: Бесконечный поиск с расширенными фильтрами ---
-        while True:
             if get_user(user_id)["status"] != "searching":
                 return
             candidates = find_compatible(user_id)
@@ -402,7 +372,42 @@ async def find_partner_with_timeout(user_id: int):
                     await bot.send_message(user_id, "🎉 Нашли! Пишите:", reply_markup=get_in_chat_menu())
                     await bot.send_message(companion_id, "🎉 Нашли! Ждём:", reply_markup=get_in_chat_menu())
                     return
+
+        # 2-й этап: расширяем фильтры
+        user = get_user(user_id)
+        if user["status"] != "searching":
+            return
+        new_max_age = min(user["preferences"]["age_max"] + 10, 99)
+        update_filters(user_id,
+                       preferred_gender="any",
+                       max_age=new_max_age,
+                       city="any")
+        set_status(user_id, "searching")
+        await bot.send_message(
+            user_id,
+            f"🔍 Расширяем поиск:\n"
+            f"• Пол: любой\n"
+            f"• Возраст: до {new_max_age}\n"
+            f"• Город: любой"
+        )
+
+        # 3-й этап: бесконечный поиск с расширенными фильтрами
+        while True:
             await asyncio.sleep(3)
+            if get_user(user_id)["status"] != "searching":
+                return
+            candidates = find_compatible(user_id)
+            for cand in candidates:
+                companion_id = cand["user_id"]
+                if get_user(companion_id)["status"] == "searching":
+                    create_chat(user_id, companion_id)
+                    set_status(user_id, "chatting")
+                    set_status(companion_id, "chatting")
+                    await bot.send_message(user_id, "🎉 Нашли! Пишите:", reply_markup=get_in_chat_menu())
+                    await bot.send_message(comppython
+
+                    await bot.send_message(companion_id, "🎉 Нашли! Ждём:", reply_markup=get_in_chat_menu())
+                    return
 
     except Exception as e:
         logger.error(f"Ошибка поиска: {e}")
