@@ -390,8 +390,7 @@ async def find_partner_with_timeout(user_id: int):
             f"• Возраст: до {new_max_age}\n"
             f"• Город: любой"
         )
-
-        # 3-й этап: бесконечный поиск с расширенными фильтрами
+ # 3-й этап: бесконечный поиск с расширенными фильтрами
         while True:
             await asyncio.sleep(3)
             if get_user(user_id)["status"] != "searching":
@@ -404,8 +403,6 @@ async def find_partner_with_timeout(user_id: int):
                     set_status(user_id, "chatting")
                     set_status(companion_id, "chatting")
                     await bot.send_message(user_id, "🎉 Нашли! Пишите:", reply_markup=get_in_chat_menu())
-                    await bot.send_message(comppython
-
                     await bot.send_message(companion_id, "🎉 Нашли! Ждём:", reply_markup=get_in_chat_menu())
                     return
 
@@ -413,7 +410,6 @@ async def find_partner_with_timeout(user_id: int):
         logger.error(f"Ошибка поиска: {e}")
         await bot.send_message(user_id, "❌ Ошибка поиска. Попробуйте снова.", reply_markup=get_main_menu())
         set_status(user_id, "idle")
-
 # --- Отмена поиска ---
 @dp.message(F.text == "🔍 Отменить поиск")
 async def cancel_search(message: types.Message):
