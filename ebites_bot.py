@@ -1,5 +1,3 @@
-# ebites_bot.py
-
 import os
 import asyncio
 import logging
@@ -14,17 +12,32 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from dotenv import load_dotenv
+from flask import Flask
 
 # Загрузка переменных окружения
-load_dotenv("ebites.env")
+load_dotenv()
 
 # Получение токена
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("Не задан BOT_TOKEN в переменных окружения!")
+
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Flask веб-сервер
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Бот работает! 🚀"
+
+@app.route('/health')
+def health():
+    return {"status": "ok"}, 200
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
@@ -43,19 +56,16 @@ class ProfileStates(StatesGroup):
     waiting_for_city_manual = State()
 
 class FilterStates(StatesGroup):
-    waiting_for_gender = State()
     waiting_for_age_min = State()
     waiting_for_age_max = State()
     waiting_for_city = State()
 
 # --- Инлайн-кнопки ---
-# Пол
 gender_inline_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="👨 Мужской", callback_data="gender_male"),
      InlineKeyboardButton(text="👩 Женский", callback_data="gender_female")]
 ])
 
-# Возраст (кнопки)
 age_inline_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="18-25", callback_data="age_18_25"),
      InlineKeyboardButton(text="26-35", callback_data="age_26_35")],
@@ -63,7 +73,6 @@ age_inline_kb = InlineKeyboardMarkup(inline_keyboard=[
      InlineKeyboardButton(text="51-100", callback_data="age_51_100")]
 ])
 
-# Город
 city_inline_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Москва", callback_data="city_Москва")],
     [InlineKeyboardButton(text="Санкт-Петербург", callback_data="city_Санкт-Петербург")],
@@ -71,7 +80,6 @@ city_inline_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Другой", callback_data="city_other")]
 ])
 
-# Фильтры: пол
 filter_gender_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Любой", callback_data="filter_gender_any"),
      InlineKeyboardButton(text="Мужской", callback_data="filter_gender_Мужской"),
@@ -355,9 +363,10 @@ async def start_search(message: types.Message):
     await message.answer("🔎 Ищем...", reply_markup=get_searching_menu())
     asyncio.create_task(find_partner_with_timeout(user_id))
 
+
 async def find_partner_with_timeout(user_id: int):
     try:
-        # 1-й этап: строгие фильтры (15 сек)
+        # Этап 1: строгие фильтры (15 сек)
         for _ in range(3):
             await asyncio.sleep(5)
             if get_user(user_id)["status"] != "searching":
@@ -373,16 +382,12 @@ async def find_partner_with_timeout(user_id: int):
                     await bot.send_message(companion_id, "🎉 Нашли! Ждём:", reply_markup=get_in_chat_menu())
                     return
 
-        # 2-й этап: расширяем фильтры
+        # Этап 2: расширяем фильтры
         user = get_user(user_id)
         if user["status"] != "searching":
             return
-        new_max_age = min(user["preferences"]["age_max"] + 10, 99)
-        update_filters(user_id,
-                       preferred_gender="any",
-                       max_age=new_max_age,
-                       city="any")
-        set_status(user_id, "searching")
+        new_max_age = min(user["preferences"]["max_age"] + 10, 99)
+        update_filters(user_id, preferred_gender="any", max_age=new_max_age, city="any")
         await bot.send_message(
             user_id,
             f"🔍 Расширяем поиск:\n"
@@ -390,7 +395,8 @@ async def find_partner_with_timeout(user_id: int):
             f"• Возраст: до {new_max_age}\n"
             f"• Город: любой"
         )
- # 3-й этап: бесконечный поиск с расширенными фильтрами
+
+        # Этап 3: бесконечный поиск
         while True:
             await asyncio.sleep(3)
             if get_user(user_id)["status"] != "searching":
@@ -410,6 +416,8 @@ async def find_partner_with_timeout(user_id: int):
         logger.error(f"Ошибка поиска: {e}")
         await bot.send_message(user_id, "❌ Ошибка поиска. Попробуйте снова.", reply_markup=get_main_menu())
         set_status(user_id, "idle")
+
+
 # --- Отмена поиска ---
 @dp.message(F.text == "🔍 Отменить поиск")
 async def cancel_search(message: types.Message):
@@ -417,6 +425,7 @@ async def cancel_search(message: types.Message):
     if get_user(user_id)["status"] == "searching":
         set_status(user_id, "idle")
     await message.answer("Поиск остановлен.", reply_markup=get_main_menu())
+
 
 # --- Чат ---
 @dp.message(F.text == "🚪 Выйти из чата")
@@ -432,8 +441,11 @@ async def exit_chat(message: types.Message):
     await bot.send_message(comp_id, "Собеседник вышел.", reply_markup=get_main_menu())
     await message.answer("Вы вышли из чата.", reply_markup=get_main_menu())
 
-@dp.message(F.text, F.text != "🚪 Выйти из чата")
+
+@dp.message(F.text)
 async def chat_message(message: types.Message):
+    if message.text == "🚪 Выйти из чата":
+        return
     user_id = message.from_user.id
     user = get_user(user_id)
     if user["status"] != "chatting":
@@ -448,8 +460,21 @@ async def chat_message(message: types.Message):
         await message.answer("❌ Собеседник отключился.")
         await exit_chat(message)
 
+
 # --- Запуск ---
-if __name__ == "__main__":
+async def start_bot():
     init_db()
     print("🟢 Бот @anon_ebites_bot запущен!")
-    dp.run_polling(bot)
+    await dp.start_polling(bot)
+
+
+# Запуск Flask в отдельном потоке
+def run_web():
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
+
+
+if __name__ == '__main__':
+    from threading import Thread
+    Thread(target=run_web, daemon=True).start()
+    asyncio.run(start_bot())
