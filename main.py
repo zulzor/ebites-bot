@@ -1,51 +1,49 @@
-from flask import Flask
-import threading
-import os
 import asyncio
 from aiogram import Bot, Dispatcher
-from aiogram.filters import Command
-from aiogram.types import Message
+import logging
+import sys
+from flask import Flask
+from threading import Thread
 
-# === Flask веб-сервер ===
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Бот работает! 🚀"
+    return "Bot is alive!"
 
-@app.route('/health')
-def health():
-    return {"status": "ok"}, 200
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
 
-# Запуск Flask в фоне
-def run_web():
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
-
-# === Telegram бот ===
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise RuntimeError("Не задан BOT_TOKEN")
-
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
-
-@dp.startup()
-async def startup():
-    print("✅ Бот запущен")
-
-@dp.message(Command("start"))
-async def start(message: Message):
-    await message.answer(f"Привет, {message.from_user.first_name}! Бот работает.")
-
-# === Запуск ===
-async def start_bot():
-    # Запускаем Flask в отдельном потоке
-    thread = threading.Thread(target=run_web, daemon=True)
-    thread.start()
-
-    # Запускаем бота
-    await dp.start_polling(bot)
+async def main():
+    from ebites_bot import dp, bot
+    
+    # Удаляем все предыдущие webhook-и (на всякий случай)
+    await bot.delete_webhook(drop_pending_updates=True)
+    
+    # Настраиваем логирование
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    )
+    
+    # Запускаем поллинг с обработкой ошибок
+    while True:
+        try:
+            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        except Exception as e:
+            logging.error(f"Polling error: {e}, restarting in 5 seconds...")
+            await asyncio.sleep(5)
 
 if __name__ == '__main__':
-    asyncio.run(start_bot())
+    # Запускаем Flask в отдельном потоке для UptimeRobot
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Запускаем бота с обработкой KeyboardInterrupt
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("Bot stopped by user")
+    except Exception as e:
+        logging.critical(f"Fatal error: {e}")
+        sys.exit(1)
