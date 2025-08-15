@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv("ebites.env")
 
 # Получение токена
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 
 # Настройка логирования
